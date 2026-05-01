@@ -269,6 +269,42 @@ export function formatNum(n: number | undefined): string {
   return n.toLocaleString();
 }
 
+// Build per-county FIPS-keyed stats from FEMA declarations.
+// FEMA returns placeCode like "99012001" — last 5 digits are FIPS state(2)+county(3); we need full 5-digit FIPS like "12103" for Pinellas.
+export type CountyStats = Record<
+  string,
+  { name: string; events: number; declarations: number; lastEvent?: string }
+>;
+
+export function buildCountyStats(rows: FemaDeclaration[]): CountyStats {
+  const stats: CountyStats = {};
+  for (const r of rows) {
+    if (!r.fipsStateCode || !r.fipsCountyCode) continue;
+    const fips = `${r.fipsStateCode}${r.fipsCountyCode}`;
+    const cleanName = (r.declaredCountyArea || "").replace(/ \(County\)$/, "").trim();
+    if (!stats[fips]) {
+      stats[fips] = { name: cleanName || fips, events: 0, declarations: 0 };
+    }
+    stats[fips].declarations += 1;
+    // Only count distinct declarationTitles per county for "events"
+    const evtKey = `${fips}|${r.declarationTitle}`;
+    (stats[fips] as any)._evts = (stats[fips] as any)._evts || new Set<string>();
+    if (!(stats[fips] as any)._evts.has(evtKey)) {
+      (stats[fips] as any)._evts.add(evtKey);
+      stats[fips].events += 1;
+    }
+    const dt = r.declarationDate;
+    if (!stats[fips].lastEvent || dt > stats[fips].lastEvent) {
+      stats[fips].lastEvent = `${r.declarationTitle.replace(/^HURRICANE\s+/i, "")} · ${dt.slice(0, 4)}`;
+    }
+  }
+  // Strip the helper Set before returning
+  for (const k of Object.keys(stats)) {
+    delete (stats[k] as any)._evts;
+  }
+  return stats;
+}
+
 // Off-season demo NWS alerts to pair with DEMO_STORM.
 export const DEMO_NWS_ALERTS: NwsAlert[] = [
   {

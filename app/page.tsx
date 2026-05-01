@@ -1,6 +1,8 @@
-import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
+import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, buildCountyStats, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
 import { synthesizeBriefing } from "@/lib/briefing";
 import { marked } from "marked";
+import CountyMap from "./components/CountyMap";
+import HurricaneTimeline from "./components/HurricaneTimeline";
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -38,10 +40,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const alerts = demoMode ? DEMO_NWS_ALERTS : realAlerts.filter((a) => /hurricane|tropical|storm surge|flood/i.test(a.event));
 
   const filtered = filterByCounty(allDecls, county || null);
-  const events = groupByStorm(filtered).slice(0, 8);
+  const events = groupByStorm(filtered).slice(0, 12);
+  const allEvents = groupByStorm(allDecls);
 
-  const totalEvents = groupByStorm(allDecls).length;
+  const totalEvents = allEvents.length;
   const totalDeclarations = allDecls.length;
+  const countyStats = buildCountyStats(allDecls);
 
   return (
     <main className="container">
@@ -74,6 +78,26 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           </a>
         )}
       </p>
+
+      {/* INTERACTIVE FL MAP — choropleth of hurricane declarations by county + demo storm cone */}
+      <section style={{ margin: "2rem 0" }}>
+        <p className="eyebrow">Florida hurricane impact map · click a county to drill down</p>
+        <div style={{ marginTop: "0.75rem" }}>
+          <CountyMap stats={countyStats} selectedCounty={county} demoMode={demoMode} />
+        </div>
+      </section>
+
+      {/* INTERACTIVE TIMELINE — bar chart of hurricane events */}
+      {(events.length > 0 || allEvents.length > 0) && (
+        <section style={{ margin: "2rem 0" }}>
+          <div className="card" style={{ padding: "1rem 1.25rem" }}>
+            <HurricaneTimeline
+              events={county && events.length > 0 ? events : allEvents.slice(0, 27)}
+              county={county}
+            />
+          </div>
+        </section>
+      )}
 
       {/* COUNTY SELECTOR */}
       <section style={{ margin: "2rem 0" }}>
