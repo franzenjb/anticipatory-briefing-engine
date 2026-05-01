@@ -3,6 +3,31 @@
 
 const UA = "briefing.jbf.com (jbf@jbf.com)";
 
+// LightRAG endpoint — direct Railway URL (lightrag.jbf.com DNS is currently stale).
+const LIGHTRAG_URL = process.env.LIGHTRAG_URL || "https://dragons-brain-production-bb2c.up.railway.app";
+
+export type LightragMode = "naive" | "local" | "global" | "hybrid" | "mix";
+
+export async function queryLightrag(
+  query: string,
+  mode: LightragMode = "hybrid",
+  topK = 5
+): Promise<{ response: string; mode: string; ok: boolean }> {
+  try {
+    const res = await fetch(`${LIGHTRAG_URL}/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, mode, top_k: topK }),
+      next: { revalidate: 3600 }, // cache identical queries 1hr
+    });
+    if (!res.ok) return { response: `LightRAG returned ${res.status}`, mode, ok: false };
+    const data = await res.json();
+    return { response: data.response || JSON.stringify(data).slice(0, 500), mode, ok: true };
+  } catch (err: any) {
+    return { response: `LightRAG error: ${err?.message || "unknown"}`, mode, ok: false };
+  }
+}
+
 export type ActiveStorm = {
   id: string;
   name: string;
@@ -176,6 +201,62 @@ export async function fetchNwsAlerts(area: string = "FL"): Promise<NwsAlert[]> {
   } catch {
     return [];
   }
+}
+
+// OpenFEMA Individual Assistance — count of registrants by disaster.
+export type IaSummary = {
+  disasterNumber: number;
+  totalValidRegistrations: number;
+  totalDamage?: number;
+  approvedForFemaAssistance?: number;
+  totalApprovedIhpAmount?: number;
+};
+
+export async function fetchIaForDisasters(disasterNumbers: number[]): Promise<Record<number, IaSummary>> {
+  if (disasterNumbers.length === 0) return {};
+  const filter = disasterNumbers.map((n) => `disasterNumber eq ${n}`).join(" or ");
+  const url =
+    "https://www.fema.gov/api/open/v1/IndividualAssistanceHousingRegistrantsLargeDisasters?" +
+    new URLSearchParams({
+      "$filter": filter,
+      "$top": String(Math.min(disasterNumbers.length * 80, 1000)),
+      "$format": "json",
+    }).toString();
+
+  try {
+    const res = await fetch(url, {
+      next: { revalidate: 86400 },
+      headers: { "User-Agent": UA },
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    const rows = data.IndividualAssistanceHousingRegistrantsLargeDisasters ?? [];
+    const out: Record<number, IaSummary> = {};
+    for (const r of rows) {
+      const dn = r.disasterNumber;
+      if (!out[dn]) {
+        out[dn] = { disasterNumber: dn, totalValidRegistrations: 0, totalApprovedIhpAmount: 0 };
+      }
+      out[dn].totalValidRegistrations += r.validRegistrations || 0;
+      out[dn].totalApprovedIhpAmount = (out[dn].totalApprovedIhpAmount || 0) + (r.totalApprovedIhpAmount || 0);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function formatUSD(n: number | undefined): string {
+  if (!n) return "—";
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+export function formatNum(n: number | undefined): string {
+  if (!n) return "—";
+  return n.toLocaleString();
 }
 
 // Off-season demo NWS alerts to pair with DEMO_STORM.

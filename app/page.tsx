@@ -1,4 +1,5 @@
-import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
+import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
+import { synthesizeBriefing } from "@/lib/briefing";
 
 export const revalidate = 300;
 
@@ -14,10 +15,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const { county = "", demo: demoParam } = await searchParams;
   const demoMode = demoParam === "1";
 
-  const [realStorms, allDecls, realAlerts] = await Promise.all([
+  const lightragQuery = county
+    ? `What are the disaster history, hazards, and vulnerabilities of ${county} County, Florida? Include hurricane risk, social vulnerability, and any historical FEMA disaster declarations.`
+    : `Summarize Florida hurricane disaster history and the most-affected counties.`;
+
+  const [realStorms, allDecls, realAlerts, lightragResult] = await Promise.all([
     fetchActiveStorms(),
     fetchFloridaHurricanes(1000),
     fetchNwsAlerts("FL"),
+    queryLightrag(lightragQuery, "hybrid", 5),
   ]);
 
   const activeStorms = demoMode ? [DEMO_STORM] : realStorms;
@@ -144,6 +150,29 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      </section>
+
+      {/* LIGHTRAG NARRATIVE PANEL */}
+      <section style={{ margin: "2.5rem 0" }}>
+        <p className="eyebrow">
+          LightRAG narrative · {county ? `${county} County` : "FL statewide"} · KG hybrid retrieval
+        </p>
+        <div className="card" style={{ marginTop: "0.75rem" }}>
+          {lightragResult.ok ? (
+            <div>
+              <div style={{ whiteSpace: "pre-wrap", fontSize: "0.95rem", lineHeight: 1.6 }}>
+                {lightragResult.response}
+              </div>
+              <p className="muted" style={{ fontSize: "0.8rem", marginTop: "1rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
+                Source: dragons-brain LightRAG · Neo4j + pgvector · 27K+ docs · gpt-4o-mini · mode={lightragResult.mode}
+              </p>
+            </div>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              {lightragResult.response}
+            </p>
           )}
         </div>
       </section>
