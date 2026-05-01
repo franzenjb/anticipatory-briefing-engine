@@ -49,6 +49,53 @@ h1, h2, h3 {
 
 .muted { color: var(--ink-muted); }
 
+/* Rendered LightRAG markdown */
+.kg-output { font-size: 0.95rem; line-height: 1.6; color: var(--ink); }
+.kg-output h1, .kg-output h2 { display: none; }
+.kg-output h3 {
+  font-family: 'Libre Baskerville', Georgia, serif;
+  font-size: 1.25rem;
+  margin: 1.5rem 0 0.5rem;
+  color: var(--ink);
+  font-weight: 700;
+}
+.kg-output h3:first-child { margin-top: 0; }
+.kg-output h4 {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rc-red);
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+}
+.kg-output p { margin: 0 0 0.85rem; }
+.kg-output strong { font-weight: 700; color: var(--ink); }
+.kg-output ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+.kg-output li {
+  padding: 0.5rem 0.75rem;
+  background: rgba(196, 30, 58, 0.04);
+  border-left: 2px solid var(--rc-red);
+  border-radius: 0 3px 3px 0;
+  font-size: 0.92rem;
+}
+.kg-output li::before { display: none; }
+.kg-output a { color: var(--rc-red); text-decoration: none; border-bottom: 1px solid rgba(196,30,58,0.3); }
+.kg-output a:hover { border-bottom-color: var(--rc-red); }
+.kg-output code {
+  background: var(--rule);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+}
+
 .grid-4 {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

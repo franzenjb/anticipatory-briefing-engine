@@ -1,5 +1,8 @@
 import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
 import { synthesizeBriefing } from "@/lib/briefing";
+import { marked } from "marked";
+
+marked.setOptions({ gfm: true, breaks: false });
 
 export const revalidate = 300;
 
@@ -162,9 +165,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <div className="card" style={{ marginTop: "0.75rem" }}>
           {lightragResult.ok ? (
             <div>
-              <div style={{ whiteSpace: "pre-wrap", fontSize: "0.95rem", lineHeight: 1.6 }}>
-                {lightragResult.response}
-              </div>
+              <div
+                className="kg-output"
+                dangerouslySetInnerHTML={{ __html: marked.parse(lightragResult.response) as string }}
+              />
               <p className="muted" style={{ fontSize: "0.8rem", marginTop: "1rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
                 Source: dragons-brain LightRAG · Neo4j + pgvector · 27K+ docs · gpt-4o-mini · mode={lightragResult.mode}
               </p>
