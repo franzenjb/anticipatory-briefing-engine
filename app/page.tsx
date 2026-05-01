@@ -18,15 +18,20 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const { county = "", demo: demoParam } = await searchParams;
   const demoMode = demoParam === "1";
 
-  const lightragQuery = county
+  const backgroundQuery = county
     ? `What are the disaster history, hazards, and vulnerabilities of ${county} County, Florida? Include hurricane risk, social vulnerability, and any historical FEMA disaster declarations.`
     : `Summarize Florida hurricane disaster history and the most-affected counties.`;
 
-  const [realStorms, allDecls, realAlerts, lightragResult] = await Promise.all([
+  const operationalQuery = county
+    ? `You are briefing a Red Cross disaster operations team. For ${county} County, Florida, facing an incoming hurricane (assume Category 3): (1) Based on historical responses there, what shelter capacity has typically been needed? (2) Which neighborhoods or census tracts have the highest social vulnerability? (3) Which infrastructure or coastal areas are most at risk? (4) What should we pre-stage and which populations should we prioritize? Be specific and cite past events from the knowledge graph.`
+    : `For Florida in general: which counties are highest-priority for hurricane pre-staging given combined hazard risk and social vulnerability? Cite specific data from the knowledge graph.`;
+
+  const [realStorms, allDecls, realAlerts, backgroundResult, operationalResult] = await Promise.all([
     fetchActiveStorms(),
     fetchFloridaHurricanes(1000),
     fetchNwsAlerts("FL"),
-    queryLightrag(lightragQuery, "hybrid", 5),
+    queryLightrag(backgroundQuery, "hybrid", 5),
+    queryLightrag(operationalQuery, "hybrid", 8),
   ]);
 
   const activeStorms = demoMode ? [DEMO_STORM] : realStorms;
@@ -157,28 +162,53 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </div>
       </section>
 
-      {/* LIGHTRAG NARRATIVE PANEL */}
+      {/* LIGHTRAG OPERATIONAL BRIEFING — the headline panel */}
       <section style={{ margin: "2.5rem 0" }}>
         <p className="eyebrow">
-          LightRAG narrative · {county ? `${county} County` : "FL statewide"} · KG hybrid retrieval
+          🎯 Operational briefing · {county ? `${county} County` : "FL statewide"} · LightRAG synthesis
         </p>
-        <div className="card" style={{ marginTop: "0.75rem" }}>
-          {lightragResult.ok ? (
+        <div className="card" style={{ marginTop: "0.75rem", borderLeft: "4px solid var(--rc-red)" }}>
+          {operationalResult.ok ? (
             <div>
               <div
                 className="kg-output"
-                dangerouslySetInnerHTML={{ __html: marked.parse(lightragResult.response) as string }}
+                dangerouslySetInnerHTML={{ __html: marked.parse(operationalResult.response) as string }}
               />
               <p className="muted" style={{ fontSize: "0.8rem", marginTop: "1rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
-                Source: dragons-brain LightRAG · Neo4j + pgvector · 27K+ docs · gpt-4o-mini · mode={lightragResult.mode}
+                Source: dragons-brain LightRAG · 27K+ docs · pre-stage / shelter capacity / vulnerable population synthesis · mode=hybrid
               </p>
             </div>
           ) : (
-            <p className="muted" style={{ margin: 0 }}>
-              {lightragResult.response}
-            </p>
+            <p className="muted" style={{ margin: 0 }}>{operationalResult.response}</p>
           )}
         </div>
+      </section>
+
+      {/* LIGHTRAG BACKGROUND — disaster history reference */}
+      <section style={{ margin: "2.5rem 0" }}>
+        <p className="eyebrow">
+          Background · {county ? `${county} County` : "FL statewide"} · disaster history + hazards
+        </p>
+        <details className="card" style={{ marginTop: "0.75rem", padding: "1rem 1.5rem" }}>
+          <summary className="muted" style={{ cursor: "pointer", fontSize: "0.95rem" }}>
+            Click to expand full disaster history, hazard scores, and social vulnerability profile
+          </summary>
+          <div style={{ marginTop: "1rem" }}>
+            {backgroundResult.ok ? (
+              <div>
+                <div
+                  className="kg-output"
+                  dangerouslySetInnerHTML={{ __html: marked.parse(backgroundResult.response) as string }}
+                />
+                <p className="muted" style={{ fontSize: "0.8rem", marginTop: "1rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
+                  Source: dragons-brain LightRAG · FEMA NRI + ACS + CDC SVI + FEMA Declarations · mode=hybrid
+                </p>
+              </div>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>{backgroundResult.response}</p>
+            )}
+          </div>
+        </details>
       </section>
 
       {/* NWS ALERTS PANEL */}
