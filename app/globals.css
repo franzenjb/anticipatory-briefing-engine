@@ -100,7 +100,57 @@ h1, h2, h3, h4 {
   color: var(--ink);
   line-height: 1;
 }
+.kpi-sub {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 0.25rem;
+  line-height: 1.3;
+}
+.kpi.kpi-eal,
+.kpi.kpi-eal-cone,
+.kpi.kpi-eal-county {
+  background: linear-gradient(135deg, rgba(196,30,58,0.10), rgba(196,30,58,0.02));
+  border-left: 3px solid var(--rc-red);
+}
+.kpi.kpi-eal .kpi-value,
+.kpi.kpi-eal-cone .kpi-value,
+.kpi.kpi-eal-county .kpi-value {
+  color: var(--rc-red);
+}
 @media (max-width: 720px) { .kpi-strip { grid-template-columns: repeat(2, 1fr); } }
+
+/* MONEY-AT-RISK HEADLINE BANNER (demo mode) */
+.money-headline {
+  margin: 1rem 0 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, var(--rc-red), #8c0c1f);
+  color: #fff;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(196,30,58,0.2);
+}
+.money-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.9;
+  margin-bottom: 0.4rem;
+}
+.money-value {
+  font-family: 'Libre Baskerville', Georgia, serif;
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.4rem;
+}
+.money-sub {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  max-width: 800px;
+}
+.money-sub strong { font-weight: 700; }
+@media (max-width: 720px) { .money-value { font-size: 2.25rem; } }
 
 /* BLOCKS */
 .block { margin: 1.25rem 0; }

@@ -269,6 +269,41 @@ export function formatNum(n: number | undefined): string {
   return n.toLocaleString();
 }
 
+// FL county risk + loss data from Supabase (same source as intel.jbf.com).
+const SUPABASE_URL = "https://qoskpyfgimjcmmxunfji.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvc2tweWZnaW1qY21teHVuZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjY0MzAsImV4cCI6MjA5MDcwMjQzMH0.oTa6xhNAQ8eW_Bur-uKvBPBpWkPD2SpaahgcSFysVPY";
+
+export type CountyRisk = {
+  county_fips: string;
+  county_name: string;
+  population: number | null;
+  expected_annual_loss: number | null;
+  risk_score: number | null;
+  hurricane_risk: number | null;
+};
+
+export async function fetchFLCountyRisk(): Promise<CountyRisk[]> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/county_rankings?select=county_fips,county_name,population,expected_annual_loss,risk_score,hurricane_risk&state_abbr=eq.FL&limit=100`,
+      {
+        next: { revalidate: 86400 },
+        headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
+      }
+    );
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+// Counties projected to be in the demo Cat 3 cone path (Naples → Tampa Bay).
+export const DEMO_CONE_COUNTIES = [
+  "Monroe", "Collier", "Lee", "Charlotte", "Sarasota",
+  "Manatee", "Hillsborough", "Pinellas", "Pasco", "Hernando", "Citrus",
+];
+
 // Build per-county FIPS-keyed stats from FEMA declarations.
 // FEMA returns placeCode like "99012001" — last 5 digits are FIPS state(2)+county(3); we need full 5-digit FIPS like "12103" for Pinellas.
 export type CountyStats = Record<

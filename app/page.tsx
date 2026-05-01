@@ -1,4 +1,4 @@
-import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, buildCountyStats, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
+import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, buildCountyStats, fetchFLCountyRisk, DEMO_STORM, DEMO_NWS_ALERTS, DEMO_CONE_COUNTIES } from "@/lib/sources";
 import { marked } from "marked";
 import CountyMapSvg from "./components/CountyMapSvg";
 
@@ -22,12 +22,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     ? `Briefing for Red Cross disaster operations team. ${county} County, Florida, facing incoming Cat 3 hurricane: (1) historical shelter capacity needed there, (2) most socially vulnerable neighborhoods, (3) infrastructure most at risk, (4) what to pre-stage. Be specific. Cite past events.`
     : `Florida: which counties are highest-priority for hurricane pre-staging given combined hazard risk and social vulnerability? Cite specific data.`;
 
-  const [realStorms, allDecls, realAlerts, backgroundResult, operationalResult] = await Promise.all([
+  const [realStorms, allDecls, realAlerts, backgroundResult, operationalResult, countyRisk] = await Promise.all([
     fetchActiveStorms(),
     fetchFloridaHurricanes(1000),
     fetchNwsAlerts("FL"),
     queryLightrag(backgroundQuery, "hybrid", 5),
     queryLightrag(operationalQuery, "hybrid", 8),
+    fetchFLCountyRisk(),
   ]);
 
   const activeStorms = demoMode ? [DEMO_STORM] : realStorms;
@@ -42,6 +43,27 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const top5 = Object.entries(countyStats)
     .sort(([, a], [, b]) => b.events - a.events)
     .slice(0, 5);
+
+  // EAL aggregations from FEMA NRI (Supabase county_rankings)
+  const totalEAL = countyRisk.reduce((s, r) => s + (Number(r.expected_annual_loss) || 0), 0);
+  const totalPop = countyRisk.reduce((s, r) => s + (Number(r.population) || 0), 0);
+  const ealPerCapita = totalPop ? Math.round(totalEAL / totalPop) : 0;
+
+  // Demo storm "money in cone" — sum the EAL of cone counties
+  const coneCountyRisk = countyRisk.filter(r =>
+    DEMO_CONE_COUNTIES.some(c => (r.county_name || "").toLowerCase().includes(c.toLowerCase()))
+  );
+  const coneEAL = coneCountyRisk.reduce((s, r) => s + (Number(r.expected_annual_loss) || 0), 0);
+  const conePop = coneCountyRisk.reduce((s, r) => s + (Number(r.population) || 0), 0);
+
+  // Selected-county-specific EAL (from countyRisk match by name)
+  const selectedRisk = county
+    ? countyRisk.find(r => (r.county_name || "").toLowerCase().startsWith(county.toLowerCase()))
+    : null;
+  const selectedEAL = selectedRisk ? Number(selectedRisk.expected_annual_loss) || 0 : 0;
+  const selectedPop = selectedRisk ? Number(selectedRisk.population) || 0 : 0;
+
+  const fmtUSD = (n: number) => n >= 1e9 ? `$${(n/1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n/1e6).toFixed(0)}M` : n > 0 ? `$${(n/1e3).toFixed(0)}K` : "—";
 
   return (
     <main className="page">
@@ -71,23 +93,38 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </div>
       </header>
 
-      {/* KPI STRIP */}
+      {/* KPI STRIP — EAL leads */}
       <section className="kpi-strip">
-        <div className="kpi">
-          <span className="kpi-label">Active storms</span>
-          <span className="kpi-value">{activeStorms.length}</span>
+        <div className="kpi kpi-eal">
+          <span className="kpi-label">FL Expected Annual Loss</span>
+          <span className="kpi-value">{fmtUSD(totalEAL)}/yr</span>
+          <span className="kpi-sub">${ealPerCapita}/capita · 67 counties · FEMA NRI</span>
         </div>
+        {county && selectedEAL > 0 ? (
+          <div className="kpi kpi-eal-county">
+            <span className="kpi-label">{county} County · EAL</span>
+            <span className="kpi-value">{fmtUSD(selectedEAL)}/yr</span>
+            <span className="kpi-sub">${selectedPop ? Math.round(selectedEAL/selectedPop).toLocaleString() : "—"}/capita · pop {selectedPop.toLocaleString()}</span>
+          </div>
+        ) : demoMode ? (
+          <div className="kpi kpi-eal-cone">
+            <span className="kpi-label">Demo storm · cone exposure</span>
+            <span className="kpi-value">{fmtUSD(coneEAL)}/yr</span>
+            <span className="kpi-sub">{coneCountyRisk.length} counties in path · {(conePop/1e6).toFixed(1)}M people</span>
+          </div>
+        ) : (
+          <div className="kpi">
+            <span className="kpi-label">Active storms</span>
+            <span className="kpi-value">{activeStorms.length}</span>
+          </div>
+        )}
         <div className="kpi">
           <span className="kpi-label">FL alerts</span>
           <span className="kpi-value">{alerts.length}</span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Hurricane events tracked</span>
+          <span className="kpi-label">Historical events</span>
           <span className="kpi-value">{totalEvents}</span>
-        </div>
-        <div className="kpi">
-          <span className="kpi-label">FEMA decl rows</span>
-          <span className="kpi-value">{allDecls.length.toLocaleString()}</span>
         </div>
         <div className="kpi">
           <span className="kpi-label">KG docs</span>
@@ -95,14 +132,33 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </div>
       </section>
 
+      {/* MONEY-AT-RISK HEADLINE — demo mode only */}
+      {demoMode && coneEAL > 0 && (
+        <section className="money-headline">
+          <div className="money-eyebrow">🌀 If demo Cat 3 makes landfall as projected</div>
+          <div className="money-value">{fmtUSD(coneEAL)}/yr</div>
+          <div className="money-sub">
+            of expected annual disaster loss sits in the {coneCountyRisk.length}-county cone path.
+            Affecting <strong>{(conePop/1e6).toFixed(1)}M Floridians</strong> across {coneCountyRisk.map(r => r.county_name?.replace(/ County$/,"")).filter(Boolean).slice(0,5).join(", ")}{coneCountyRisk.length > 5 ? `, +${coneCountyRisk.length - 5} more` : ""}.
+          </div>
+        </section>
+      )}
+
       {/* MAP — server-rendered SVG, no flash */}
       <section className="block">
         <div className="block-head">
-          <p className="eyebrow">Interactive map · 67 counties · click to drill down</p>
+          <p className="eyebrow">FL counties · colored by Expected Annual Loss · click to drill down</p>
           {county && <span className="muted small">selected: <strong>{county}</strong> · <a href={demoMode ? "/?demo=1" : "/"}>show all</a></span>}
         </div>
         <div className="card map-card">
-          <CountyMapSvg stats={countyStats} selectedCounty={county} demoMode={demoMode} />
+          <CountyMapSvg
+            stats={countyStats}
+            selectedCounty={county}
+            demoMode={demoMode}
+            countyRisk={countyRisk}
+            metric="eal"
+            coneCounties={DEMO_CONE_COUNTIES}
+          />
         </div>
       </section>
 
