@@ -4,7 +4,8 @@
 const UA = "briefing.jbf.com (jbf@jbf.com)";
 
 // LightRAG endpoint — direct Railway URL (lightrag.jbf.com DNS is currently stale).
-const LIGHTRAG_URL = process.env.LIGHTRAG_URL || "https://dragons-brain-production-bb2c.up.railway.app";
+const LIGHTRAG_URL = (process.env.LIGHTRAG_URL || "https://dragons-brain-production-bb2c.up.railway.app").trim().replace(/\\n/g, "");
+const LIGHTRAG_KEY = (process.env.LIGHTRAG_KEY || "").trim().replace(/\\n/g, "");
 
 export type LightragMode = "naive" | "local" | "global" | "hybrid" | "mix";
 
@@ -13,14 +14,23 @@ export async function queryLightrag(
   mode: LightragMode = "hybrid",
   topK = 5
 ): Promise<{ response: string; mode: string; ok: boolean }> {
+  if (!LIGHTRAG_KEY) {
+    return { response: "LightRAG not configured (missing LIGHTRAG_KEY env var).", mode, ok: false };
+  }
   try {
     const res = await fetch(`${LIGHTRAG_URL}/query`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": LIGHTRAG_KEY,
+      },
       body: JSON.stringify({ query, mode, top_k: topK }),
       next: { revalidate: 3600 }, // cache identical queries 1hr
     });
-    if (!res.ok) return { response: `LightRAG returned ${res.status}`, mode, ok: false };
+    if (!res.ok) {
+      const text = await res.text();
+      return { response: `LightRAG returned ${res.status}: ${text.slice(0, 200)}`, mode, ok: false };
+    }
     const data = await res.json();
     return { response: data.response || JSON.stringify(data).slice(0, 500), mode, ok: true };
   } catch (err: any) {
