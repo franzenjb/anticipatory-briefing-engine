@@ -1,18 +1,12 @@
 import { fetchActiveStorms, fetchFloridaHurricanes, groupByStorm, filterByCounty, fetchNwsAlerts, queryLightrag, buildCountyStats, DEMO_STORM, DEMO_NWS_ALERTS } from "@/lib/sources";
-import { synthesizeBriefing } from "@/lib/briefing";
 import { marked } from "marked";
-import CountyMap from "./components/CountyMap";
-import HurricaneTimeline from "./components/HurricaneTimeline";
+import CountyMapSvg from "./components/CountyMapSvg";
 
 marked.setOptions({ gfm: true, breaks: false });
 
 export const revalidate = 300;
 
-const FL_COUNTIES = [
-  "Lee", "Pinellas", "Hillsborough", "Sarasota", "Charlotte", "Collier", "Manatee",
-  "Miami-Dade", "Broward", "Palm Beach", "Brevard", "Volusia", "Orange",
-  "Duval", "Bay", "Escambia", "Leon", "Monroe", "Polk", "Pasco",
-];
+const FL_COUNTIES = ["Lee", "Pinellas", "Hillsborough", "Sarasota", "Charlotte", "Collier", "Manatee", "Miami-Dade", "Broward", "Brevard", "Bay", "Escambia"];
 
 type SearchParams = Promise<{ county?: string; demo?: string }>;
 
@@ -21,12 +15,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const demoMode = demoParam === "1";
 
   const backgroundQuery = county
-    ? `What are the disaster history, hazards, and vulnerabilities of ${county} County, Florida? Include hurricane risk, social vulnerability, and any historical FEMA disaster declarations.`
+    ? `What are the disaster history, hazards, and vulnerabilities of ${county} County, Florida? Include hurricane risk, social vulnerability, and historical FEMA disaster declarations.`
     : `Summarize Florida hurricane disaster history and the most-affected counties.`;
 
   const operationalQuery = county
-    ? `You are briefing a Red Cross disaster operations team. For ${county} County, Florida, facing an incoming hurricane (assume Category 3): (1) Based on historical responses there, what shelter capacity has typically been needed? (2) Which neighborhoods or census tracts have the highest social vulnerability? (3) Which infrastructure or coastal areas are most at risk? (4) What should we pre-stage and which populations should we prioritize? Be specific and cite past events from the knowledge graph.`
-    : `For Florida in general: which counties are highest-priority for hurricane pre-staging given combined hazard risk and social vulnerability? Cite specific data from the knowledge graph.`;
+    ? `Briefing for Red Cross disaster operations team. ${county} County, Florida, facing incoming Cat 3 hurricane: (1) historical shelter capacity needed there, (2) most socially vulnerable neighborhoods, (3) infrastructure most at risk, (4) what to pre-stage. Be specific. Cite past events.`
+    : `Florida: which counties are highest-priority for hurricane pre-staging given combined hazard risk and social vulnerability? Cite specific data.`;
 
   const [realStorms, allDecls, realAlerts, backgroundResult, operationalResult] = await Promise.all([
     fetchActiveStorms(),
@@ -40,286 +34,180 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const alerts = demoMode ? DEMO_NWS_ALERTS : realAlerts.filter((a) => /hurricane|tropical|storm surge|flood/i.test(a.event));
 
   const filtered = filterByCounty(allDecls, county || null);
-  const events = groupByStorm(filtered).slice(0, 12);
+  const events = groupByStorm(filtered).slice(0, 10);
   const allEvents = groupByStorm(allDecls);
-
   const totalEvents = allEvents.length;
-  const totalDeclarations = allDecls.length;
   const countyStats = buildCountyStats(allDecls);
 
+  const top5 = Object.entries(countyStats)
+    .sort(([, a], [, b]) => b.events - a.events)
+    .slice(0, 5);
+
   return (
-    <main className="container">
-      <p className="eyebrow">Anticipatory Briefing Engine · v0.3</p>
-      <h1 style={{ fontSize: "2.5rem", margin: "0.25rem 0 0.5rem" }}>
-        5-day briefings per county.
-      </h1>
-      <p className="muted" style={{ fontSize: "1.1rem", maxWidth: 720 }}>
-        Forecast + historical precedent + asset position + vulnerable population.
-        v1: Florida hurricane MVP · Demo target: Red Cross Leadership AAR.
-      </p>
+    <main className="page">
+      {/* HERO */}
+      <header className="hero">
+        <div className="hero-row">
+          <p className="eyebrow">Anticipatory Briefing Engine · v0.9</p>
+          {demoMode ? (
+            <span className="demo-chip">DEMO MODE · synthetic Cat 3</span>
+          ) : null}
+        </div>
+        <h1>5-day hurricane briefings · Florida</h1>
+        <p className="lede">
+          Forecast + historical precedent + asset position + vulnerable population. Click a county for a LightRAG-synthesized briefing.
+        </p>
+        <div className="hero-actions">
+          {demoMode ? (
+            <a className="btn btn-ghost" href={county ? `/?county=${encodeURIComponent(county)}` : "/"}>← exit demo</a>
+          ) : (
+            <a className="btn btn-primary" href={`/?demo=1${county ? `&county=${encodeURIComponent(county)}` : ""}`}>▶ Preview demo storm</a>
+          )}
+          <span className="muted small">
+            quick: {FL_COUNTIES.slice(0, 6).map((c, i) => (
+              <span key={c}>{i > 0 ? " · " : " "}<a href={`/?county=${encodeURIComponent(c)}${demoMode ? "&demo=1" : ""}`}>{c}</a></span>
+            ))}
+          </span>
+        </div>
+      </header>
 
-      {/* MODE TOGGLE */}
-      <p style={{ fontSize: "0.9rem", marginTop: "1rem" }}>
-        {demoMode ? (
-          <>
-            <span style={{ background: "#FFE9C4", color: "#7A4400", padding: "0.2rem 0.5rem", borderRadius: 3, fontWeight: 600, fontSize: "0.8rem", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-              DEMO MODE
-            </span>
-            <span className="muted" style={{ marginLeft: "0.75rem" }}>
-              Synthetic storm injected for off-season preview.
-            </span>
-            <a href={county ? `/?county=${encodeURIComponent(county)}` : "/"} style={{ marginLeft: "0.75rem", color: "var(--rc-red)", textDecoration: "none", fontSize: "0.85rem" }}>
-              ← exit demo
-            </a>
-          </>
-        ) : (
-          <a href={`/?demo=1${county ? `&county=${encodeURIComponent(county)}` : ""}`} className="muted" style={{ textDecoration: "none", fontSize: "0.85rem" }}>
-            → preview with synthetic storm (off-season demo)
-          </a>
-        )}
-      </p>
-
-      {/* INTERACTIVE FL MAP — choropleth of hurricane declarations by county + demo storm cone */}
-      <section style={{ margin: "2rem 0" }}>
-        <p className="eyebrow">Florida hurricane impact map · click a county to drill down</p>
-        <div style={{ marginTop: "0.75rem" }}>
-          <CountyMap stats={countyStats} selectedCounty={county} demoMode={demoMode} />
+      {/* KPI STRIP */}
+      <section className="kpi-strip">
+        <div className="kpi">
+          <span className="kpi-label">Active storms</span>
+          <span className="kpi-value">{activeStorms.length}</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">FL alerts</span>
+          <span className="kpi-value">{alerts.length}</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">Hurricane events tracked</span>
+          <span className="kpi-value">{totalEvents}</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">FEMA decl rows</span>
+          <span className="kpi-value">{allDecls.length.toLocaleString()}</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">KG docs</span>
+          <span className="kpi-value">27K+</span>
         </div>
       </section>
 
-      {/* INTERACTIVE TIMELINE — bar chart of hurricane events */}
-      {(events.length > 0 || allEvents.length > 0) && (
-        <section style={{ margin: "2rem 0" }}>
-          <div className="card" style={{ padding: "1rem 1.25rem" }}>
-            <HurricaneTimeline
-              events={county && events.length > 0 ? events : allEvents.slice(0, 27)}
-              county={county}
-            />
+      {/* MAP — server-rendered SVG, no flash */}
+      <section className="block">
+        <div className="block-head">
+          <p className="eyebrow">Interactive map · 67 counties · click to drill down</p>
+          {county && <span className="muted small">selected: <strong>{county}</strong> · <a href={demoMode ? "/?demo=1" : "/"}>show all</a></span>}
+        </div>
+        <div className="card map-card">
+          <CountyMapSvg stats={countyStats} selectedCounty={county} demoMode={demoMode} />
+        </div>
+      </section>
+
+      <div className="two-col">
+        {/* ACTIVE STORM + ALERTS — left column */}
+        <div className="block">
+          <p className="eyebrow">Forecast · NHC + NWS</p>
+          <div className="card">
+            {activeStorms.length === 0 ? (
+              <p className="muted small no-margin">No active tropical systems. Demo mode injects a synthetic Cat 3.</p>
+            ) : (
+              activeStorms.map((s) => (
+                <div key={s.id} className="storm-row">
+                  <h3>{s.name}</h3>
+                  <p className="small no-margin">{s.classification} · {s.intensity}{s.pressure ? ` · ${s.pressure}` : ""}</p>
+                  <p className="muted small no-margin">{s.latitude?.toFixed(1)}°N, {Math.abs(s.longitude || 0).toFixed(1)}°W · {s.movement}</p>
+                </div>
+              ))
+            )}
+            {alerts.length > 0 && (
+              <>
+                <hr />
+                {alerts.slice(0, 4).map((a) => (
+                  <div key={a.id} className="alert-row">
+                    <p className="no-margin"><strong>{a.event}</strong>{a.severity ? <span className="muted small"> · {a.severity}</span> : null}</p>
+                    {a.areaDesc && <p className="muted small no-margin">{a.areaDesc}</p>}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* TOP-IMPACTED COUNTIES — right column */}
+        <div className="block">
+          <p className="eyebrow">Top-impacted FL counties · since 2000</p>
+          <div className="card">
+            <table className="rank-table">
+              <thead>
+                <tr><th>#</th><th>County</th><th className="num">Events</th><th>Last</th></tr>
+              </thead>
+              <tbody>
+                {top5.map(([fips, s], i) => (
+                  <tr key={fips}>
+                    <td className="rank">{i + 1}</td>
+                    <td>
+                      <a href={`/?county=${encodeURIComponent(s.name.replace(/ \(County\)$/, ""))}${demoMode ? "&demo=1" : ""}`}>{s.name.replace(/ \(County\)$/, "")}</a>
+                    </td>
+                    <td className="num">{s.events}</td>
+                    <td className="muted small">{s.lastEvent}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* OPERATIONAL BRIEFING — the headline */}
+      <section className="block">
+        <p className="eyebrow">🎯 Operational briefing · {county || "FL statewide"} · LightRAG synthesis</p>
+        <div className="card briefing-card">
+          {operationalResult.ok ? (
+            <>
+              <div className="kg-output" dangerouslySetInnerHTML={{ __html: marked.parse(operationalResult.response) as string }} />
+              <p className="muted small footnote">Source: dragons-brain LightRAG · 27K+ docs · Neo4j+pgvector · gpt-4o-mini · mode=hybrid</p>
+            </>
+          ) : (
+            <p className="muted no-margin">{operationalResult.response}</p>
+          )}
+        </div>
+      </section>
+
+      {/* HISTORICAL EVENTS — compact card grid */}
+      {events.length > 0 && (
+        <section className="block">
+          <p className="eyebrow">Historical events · {county || "FL"} · {events.length} events</p>
+          <div className="event-grid">
+            {events.map((e) => (
+              <div key={e.title + e.earliestDeclaration} className="event-card">
+                <p className="muted tiny">{e.earliestDeclaration.slice(0, 10)} · DR-{e.disasterNumbers.slice(0, 2).join(", DR-")}</p>
+                <h4>{e.title.replace(/^HURRICANE\s+/i, "")}</h4>
+                <p className="small no-margin"><strong>{e.countyCount}</strong> counties · {e.incidentBeginDate?.slice(0, 4)}–{e.incidentEndDate?.slice(2, 4)}</p>
+              </div>
+            ))}
           </div>
         </section>
       )}
 
-      {/* COUNTY SELECTOR */}
-      <section style={{ margin: "2rem 0" }}>
-        <p className="eyebrow">Select county</p>
-        <form method="GET" style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            type="text"
-            name="county"
-            placeholder="Type a FL county (e.g. Pinellas)"
-            defaultValue={county}
-            style={{
-              padding: "0.5rem 0.75rem",
-              border: "1px solid var(--rule)",
-              borderRadius: 4,
-              fontSize: "1rem",
-              minWidth: 260,
-              fontFamily: "inherit",
-              background: "white",
-            }}
-          />
-          <button type="submit" style={{
-            padding: "0.5rem 1rem",
-            background: "var(--rc-red)",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            fontSize: "0.95rem",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}>
-            Show precedent
-          </button>
-          {county && (
-            <a href="/" className="muted" style={{ fontSize: "0.9rem", textDecoration: "none" }}>
-              clear
-            </a>
-          )}
-          <span className="muted" style={{ fontSize: "0.85rem", marginLeft: "auto" }}>
-            quick: {FL_COUNTIES.slice(0, 6).map((c, i) => (
-              <span key={c}>
-                {i > 0 ? " · " : ""}
-                <a href={`/?county=${encodeURIComponent(c)}`} style={{ color: "var(--rc-red)", textDecoration: "none" }}>
-                  {c}
-                </a>
-              </span>
-            ))}
-          </span>
-        </form>
-      </section>
-
-      {/* FORECAST PANEL */}
-      <section style={{ margin: "2.5rem 0" }}>
-        <p className="eyebrow">Forecast · NHC active storms</p>
-        <div className="card" style={{ marginTop: "0.75rem" }}>
-          {activeStorms.length === 0 ? (
-            <div>
-              <p style={{ marginTop: 0 }}>
-                <strong>No active tropical storms or hurricanes.</strong>
-              </p>
-              <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.9rem" }}>
-                Atlantic hurricane season runs June 1 – November 30. Switch to demo mode (top of page) to preview the briefing with a synthetic storm.
-              </p>
+      {/* BACKGROUND — collapsed by default */}
+      <section className="block">
+        <details className="card">
+          <summary className="muted small">▸ Disaster history & hazard profile (full LightRAG synthesis)</summary>
+          {backgroundResult.ok ? (
+            <div style={{ marginTop: "1rem" }}>
+              <div className="kg-output" dangerouslySetInnerHTML={{ __html: marked.parse(backgroundResult.response) as string }} />
+              <p className="muted small footnote">Source: dragons-brain LightRAG · FEMA NRI + ACS + CDC SVI + FEMA Declarations</p>
             </div>
-          ) : (
-            <div>
-              <p style={{ marginTop: 0 }}>
-                <strong>{activeStorms.length} active storm{activeStorms.length === 1 ? "" : "s"}.</strong>
-              </p>
-              {activeStorms.map((s) => (
-                <div key={s.id} style={{ marginBottom: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
-                  <h3 style={{ margin: "0.5rem 0 0.25rem", fontSize: "1.15rem" }}>
-                    {s.name}
-                  </h3>
-                  <p style={{ margin: 0, fontSize: "0.95rem" }}>
-                    {s.classification} {s.intensity ? `· ${s.intensity}` : ""}
-                    {s.pressure ? ` · pressure ${s.pressure}` : ""}
-                  </p>
-                  <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>
-                    Position {s.latitude?.toFixed(1)}°N, {Math.abs(s.longitude || 0).toFixed(1)}°W
-                    {s.movement ? ` · moving ${s.movement}` : ""}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* LIGHTRAG OPERATIONAL BRIEFING — the headline panel */}
-      <section style={{ margin: "2.5rem 0" }}>
-        <p className="eyebrow">
-          🎯 Operational briefing · {county ? `${county} County` : "FL statewide"} · LightRAG synthesis
-        </p>
-        <div className="card" style={{ marginTop: "0.75rem", borderLeft: "4px solid var(--rc-red)" }}>
-          {operationalResult.ok ? (
-            <div>
-              <div
-                className="kg-output"
-                dangerouslySetInnerHTML={{ __html: marked.parse(operationalResult.response) as string }}
-              />
-              <p className="muted" style={{ fontSize: "0.8rem", marginTop: "1rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
-                Source: dragons-brain LightRAG · 27K+ docs · pre-stage / shelter capacity / vulnerable population synthesis · mode=hybrid
-              </p>
-            </div>
-          ) : (
-            <p className="muted" style={{ margin: 0 }}>{operationalResult.response}</p>
-          )}
-        </div>
-      </section>
-
-      {/* LIGHTRAG BACKGROUND — disaster history reference */}
-      <section style={{ margin: "2.5rem 0" }}>
-        <p className="eyebrow">
-          Background · {county ? `${county} County` : "FL statewide"} · disaster history + hazards
-        </p>
-        <details className="card" style={{ marginTop: "0.75rem", padding: "1rem 1.5rem" }}>
-          <summary className="muted" style={{ cursor: "pointer", fontSize: "0.95rem" }}>
-            Click to expand full disaster history, hazard scores, and social vulnerability profile
-          </summary>
-          <div style={{ marginTop: "1rem" }}>
-            {backgroundResult.ok ? (
-              <div>
-                <div
-                  className="kg-output"
-                  dangerouslySetInnerHTML={{ __html: marked.parse(backgroundResult.response) as string }}
-                />
-                <p className="muted" style={{ fontSize: "0.8rem", marginTop: "1rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
-                  Source: dragons-brain LightRAG · FEMA NRI + ACS + CDC SVI + FEMA Declarations · mode=hybrid
-                </p>
-              </div>
-            ) : (
-              <p className="muted" style={{ margin: 0 }}>{backgroundResult.response}</p>
-            )}
-          </div>
+          ) : null}
         </details>
       </section>
 
-      {/* NWS ALERTS PANEL */}
-      <section style={{ margin: "2.5rem 0" }}>
-        <p className="eyebrow">NWS active alerts · {alerts.length} hurricane/tropical/surge/flood</p>
-        <div className="card" style={{ marginTop: "0.75rem" }}>
-          {alerts.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
-              No active hurricane, tropical-storm, surge, or flood alerts in FL.
-            </p>
-          ) : (
-            <div>
-              {alerts.slice(0, 5).map((a) => (
-                <div key={a.id} style={{ marginBottom: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid var(--rule)" }}>
-                  <p style={{ margin: 0 }}>
-                    <strong>{a.event}</strong>
-                    {a.severity ? <span className="muted" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>· {a.severity} · {a.urgency}</span> : null}
-                  </p>
-                  {a.headline && <p style={{ margin: "0.25rem 0 0", fontSize: "0.9rem" }}>{a.headline}</p>}
-                  {a.areaDesc && <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>{a.areaDesc}</p>}
-                </div>
-              ))}
-              {alerts.length > 5 && <p className="muted" style={{ fontSize: "0.85rem", margin: "0.5rem 0 0" }}>+{alerts.length - 5} more alerts</p>}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* HISTORICAL PRECEDENT PANEL */}
-      <section style={{ margin: "2.5rem 0" }}>
-        <p className="eyebrow">
-          Historical precedent · {county ? `${county} County` : "all FL counties"} · {events.length} of {county ? "" : `${totalEvents} `}storm events
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1rem", marginTop: "0.75rem" }}>
-          {events.length === 0 ? (
-            <div className="card">
-              <p className="muted" style={{ margin: 0 }}>
-                No FL hurricane declarations match {county ? `"${county}"` : "the filter"}. Try a different county or clear the filter.
-              </p>
-            </div>
-          ) : events.map((e) => (
-            <div key={e.title + e.earliestDeclaration} className="card">
-              <p className="eyebrow" style={{ color: "var(--ink-muted)" }}>
-                {e.earliestDeclaration.slice(0, 10)} · DR-{e.disasterNumbers.join(", DR-")}
-              </p>
-              <h3 style={{ margin: "0.25rem 0 0.5rem", fontSize: "1.1rem" }}>{e.title}</h3>
-              <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
-                Impact window: {e.incidentBeginDate?.slice(0, 10)} → {e.incidentEndDate?.slice(0, 10) || "ongoing"}
-              </p>
-              <p style={{ fontSize: "0.9rem", margin: "0.5rem 0 0" }}>
-                <strong>{e.countyCount}</strong> {county ? "match" : "FL counties"} declared
-              </p>
-              {!county && e.counties.length > 0 && (
-                <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0", lineHeight: 1.4 }}>
-                  {e.counties.slice(0, 6).join(", ")}{e.counties.length > 6 ? `, +${e.counties.length - 6} more` : ""}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "1rem" }}>
-          Source: OpenFEMA Disaster Declarations · {totalDeclarations} FL hurricane declaration rows since 2000 · grouped into {totalEvents} storm events. Future: pass FIPS+metadata to LightRAG for similar-event retrieval and narrative briefing.
-        </p>
-      </section>
-
-      {/* ASSETS + ALICE — placeholder */}
-      <section style={{ margin: "2.5rem 0" }}>
-        <p className="eyebrow">Coming next</p>
-        <div className="grid-4" style={{ marginTop: "0.75rem" }}>
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>NWS alerts</h3>
-            <p className="muted" style={{ fontSize: "0.95rem" }}>County-level watches/warnings.</p>
-          </div>
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>Atlas overlay</h3>
-            <p className="muted" style={{ fontSize: "0.95rem" }}>RC properties, warehouses, trailers, ERVs in cone.</p>
-          </div>
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>ALICE weighting</h3>
-            <p className="muted" style={{ fontSize: "0.95rem" }}>Vulnerable population per tract inside impact area.</p>
-          </div>
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>LightRAG narrative</h3>
-            <p className="muted" style={{ fontSize: "0.95rem" }}>"Last 3 times {county || "Pinellas"} got a Cat 4: response cost, sheltered, lessons."</p>
-          </div>
-        </div>
-      </section>
+      <footer className="footer">
+        <p className="muted small">Demo target: Red Cross Leadership AAR · briefing.jbf.com · scope: FL hurricane MVP</p>
+      </footer>
     </main>
   );
 }
